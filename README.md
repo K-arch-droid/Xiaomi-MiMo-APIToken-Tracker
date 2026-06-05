@@ -99,7 +99,7 @@ playwright install chromium
 
 ### 方法一：双击运行（推荐）
 
-直接双击 `run.bat` 文件，程序会自动：
+直接双击 `launch.vbs` 文件，程序会自动：
 1. 启动 Edge 浏览器并开启远程调试端口
 2. 打开 MiMo 控制台页面
 3. 启动 Token 追踪器界面
