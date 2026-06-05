@@ -26,31 +26,68 @@ def save_history(records):
         json.dump(records, f, ensure_ascii=False, indent=2)
 
 
-def ensure_edge_running():
+def check_cdp_available():
+    """检查 Edge CDP 调试端口是否可用"""
     import urllib.request
     try:
         urllib.request.urlopen(f"{CDP_URL}/json/version", timeout=2)
         return True
     except Exception:
-        pass
+        return False
 
-    edge_path = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-    local_app = os.environ.get("LOCALAPPDATA", "")
-    user_data = os.path.join(local_app, "Microsoft", "Edge", "User Data")
+
+def check_target_page_open():
+    """检查目标页面是否已打开"""
     try:
-        subprocess.Popen([
-            edge_path,
-            f"--remote-debugging-port=9222",
-            f"--user-data-dir={user_data}",
-            TARGET_URL,
-        ])
-        time.sleep(3)
-        return True
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(CDP_URL)
+            for ctx in browser.contexts:
+                for page in ctx.pages:
+                    if "xiaomimimo.com" in page.url:
+                        return True
+            return False
     except Exception:
         return False
 
 
+def ensure_edge_running():
+    """确保 Edge 运行并打开目标页面"""
+    import urllib.request
+
+    # 如果 Edge 未运行，直接启动并打开目标页面
+    if not check_cdp_available():
+        edge_path = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+        local_app = os.environ.get("LOCALAPPDATA", "")
+        user_data = os.path.join(local_app, "Microsoft", "Edge", "User Data")
+        try:
+            subprocess.Popen([
+                edge_path,
+                f"--remote-debugging-port=9222",
+                f"--user-data-dir={user_data}",
+                TARGET_URL,
+            ])
+            time.sleep(3)
+        except Exception:
+            return False
+
+    # 检查目标页面是否已打开，未打开则在新标签页打开
+    if not check_target_page_open():
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.connect_over_cdp(CDP_URL)
+                context = browser.contexts[0] if browser.contexts else browser.new_context()
+                page = context.new_page()
+                page.goto(TARGET_URL, wait_until="networkidle", timeout=30000)
+        except Exception:
+            return False
+
+    return True
+
+
 def scrape_token_value(refresh=False):
+    # 确保 Edge 运行并打开目标页面
+    ensure_edge_running()
+
     with sync_playwright() as p:
         browser = p.chromium.connect_over_cdp(CDP_URL)
         contexts = browser.contexts
@@ -80,7 +117,6 @@ def scrape_token_value(refresh=False):
         part = text.split("/")[0].strip()
         value = int(part.replace(",", "").replace(" ", ""))
 
-        browser.close()
         return value
 
 
@@ -331,9 +367,6 @@ class TokenTrackerApp:
 
 
 def main():
-    if not ensure_edge_running():
-        messagebox.showerror("错误", "无法启动 Edge 浏览器，请手动打开并登录 MiMo 控制台")
-        return
     root = tk.Tk()
     TokenTrackerApp(root)
     root.mainloop()
